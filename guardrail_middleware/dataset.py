@@ -58,8 +58,17 @@ class EvaluationDataset:
         else:
             raise TypeError("Dataset payload must be a JSON string or dictionary.")
 
-        examples = raw.get("examples", [])
-        return cls([EvaluationExample(**example) for example in examples])
+        examples = raw.get("examples")
+        if examples is None:
+            examples = raw.get("dataset", [])
+
+        normalized_examples = []
+        for example in examples:
+            normalized = dict(example)
+            if "expected_decision" in normalized:
+                normalized["expected_decision"] = str(normalized["expected_decision"]).lower()
+            normalized_examples.append(normalized)
+        return cls([EvaluationExample(**example) for example in normalized_examples])
 
     @classmethod
     def from_file(cls, path: str | Path) -> "EvaluationDataset":
