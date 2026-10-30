@@ -197,7 +197,8 @@ Useful endpoints:
 | POST | `/api/evaluate` | Evaluates text. |
 | GET | `/api/embedding/status` | Shows configured and active provider status. |
 | GET | `/api/embedding/providers` | Lists safe provider details. |
-| GET | `/api/dashboard` | Returns dashboard data and recent events. |
+| GET | `/api/dashboard` | Returns live runtime counts, policy data, latency, and recent sanitized events. |
+| POST | `/api/dashboard/events/{request_id}/review` | Marks a runtime event reviewed; requires the admin token. |
 | PUT | `/api/embedding/config` | Selects a registered provider/model. |
 
 Protected requests require:

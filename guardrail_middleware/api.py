@@ -291,26 +291,56 @@ class RuntimeState:
         }
 
     def dashboard(self) -> dict[str, Any]:
-        from scripts.export_dashboard_data import build_payload
-
-        payload = build_payload()
+        summary = self.operational_store.summary()
         events = self.operational_store.recent()
-        payload["source"]["report"] = "live operational store"
-        payload["findings"] = [
+        live_findings = [
             {
                 "id": event["request_id"],
                 "prompt": "[redacted]",
                 "category": "runtime evaluation",
                 "policy": self.policy.id if self.policy else "unknown",
-                "expected": "required check" if event["reason_code"] == "degraded_evaluation" else "runtime",
+                "expected": "runtime",
                 "observed": event["decision"],
                 "kind": "runtime_event",
                 "latencyMs": event["latency_ms"],
                 "source": "operational_store",
+                "reasonCode": event["reason_code"],
+                "provider": event["provider_used"],
+                "degraded": bool(event["degraded_mode"]),
+                "reviewed": bool(event["reviewed"]),
+                "createdAt": event["created_at"],
             }
             for event in events
-        ] + payload["findings"]
-        return payload
+        ]
+        return {
+            "live": True,
+            "lastUpdated": summary["last_event_at"],
+            "source": {
+                "policy": "active runtime policy",
+                "dataset": "runtime audit events",
+                "report": "operational store",
+            },
+            "policy": {
+                "id": self.policy.id if self.policy else None,
+                "name": self.policy.name if self.policy else "No policy configured",
+                "defaultDecision": self.policy.default_decision.value if self.policy else None,
+                "rules": len(self.policy.rules) if self.policy else 0,
+                "semanticExamples": len(self.policy.semantic_examples) if self.policy else 0,
+                "semanticDenyThreshold": self.policy.semantic_deny_threshold if self.policy else None,
+                "semanticReviewThreshold": self.policy.semantic_review_threshold if self.policy else None,
+            },
+            "runtime": {
+                "total": summary["total"],
+                "blocked": summary["denied"],
+                "review": summary["review"],
+                "allowed": summary["allowed"],
+                "degraded": summary["degraded"],
+                "reviewed": summary["reviewed"],
+                "averageLatencyMs": summary["average_latency_ms"],
+                "lastEventAt": summary["last_event_at"],
+            },
+            "findings": live_findings,
+        }
 
 
 def create_app(
@@ -413,6 +443,15 @@ def create_app(
     @app.get("/api/dashboard")
     async def dashboard() -> dict[str, Any]:
         return runtime.dashboard()
+
+    @app.post("/api/dashboard/events/{request_id}/review")
+    async def review_event(
+        request_id: str,
+        _: None = Depends(require_admin(runtime)),
+    ) -> dict[str, Any]:
+        if not runtime.operational_store.mark_reviewed(request_id):
+            raise HTTPException(status_code=404, detail="Runtime event was not found.")
+        return {"request_id": request_id, "reviewed": True}
 
     @app.post("/api/evaluate")
     async def evaluate(

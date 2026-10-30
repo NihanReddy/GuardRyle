@@ -28,6 +28,49 @@ export type OpenAIStatus = {
   error: string | null
 }
 
+export type DashboardFinding = {
+  id: string
+  prompt: string
+  category: string
+  policy: string
+  expected: string
+  observed: 'allow' | 'deny' | 'review'
+  kind: string
+  latencyMs: number | null
+  source: string
+  reasonCode: string
+  provider: string | null
+  degraded: boolean
+  reviewed: boolean
+  createdAt: string
+}
+
+export type DashboardData = {
+  live: boolean
+  lastUpdated: string | null
+  source: { policy: string; dataset: string; report: string }
+  policy: {
+    id: string | null
+    name: string
+    defaultDecision: string | null
+    rules: number
+    semanticExamples: number
+    semanticDenyThreshold: number | null
+    semanticReviewThreshold: number | null
+  }
+  runtime: {
+    total: number
+    blocked: number
+    review: number
+    allowed: number
+    degraded: number
+    reviewed: number
+    averageLatencyMs: number | null
+    lastEventAt: string | null
+  }
+  findings: DashboardFinding[]
+}
+
 export type EvaluationResponse = {
   decision: 'allow' | 'deny' | 'review'
   reasons: string[]
@@ -64,7 +107,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const runtimeApi = {
-  getDashboard: () => request('/api/dashboard'),
+  getDashboard: () => request<DashboardData>('/api/dashboard'),
+  reviewEvent: (requestId: string) => request<{ request_id: string; reviewed: boolean }>(`/api/dashboard/events/${requestId}/review`, { method: 'POST' }),
   getEmbeddingStatus: () => request<EmbeddingStatus>('/api/embedding/status'),
   getProviders: () => request<EmbeddingProvider[]>('/api/embedding/providers'),
   getOpenAIStatus: () => request<OpenAIStatus>('/api/providers/openai/status'),

@@ -100,7 +100,11 @@ def test_evaluate_route_persists_sanitized_event_and_dashboard_reads_it(tmp_path
     dashboard = client.get("/api/dashboard")
     assert dashboard.status_code == 200
     assert any(item["id"] == body["metadata"]["request_id"] for item in dashboard.json()["findings"])
-
+    dashboard_body = dashboard.json()
+    assert dashboard_body["live"] is True
+    assert dashboard_body["runtime"]["total"] == 1
+    assert dashboard_body["source"]["report"] == "operational store"
+    assert all(item["source"] == "operational_store" for item in dashboard_body["findings"])
 
 def test_provider_metadata_and_configuration_require_authentication():
     client, _ = make_client(provider=FakeProvider())

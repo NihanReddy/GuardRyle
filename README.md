@@ -103,15 +103,11 @@ The adapter never claims a remote model or device that was not initialized.
 The administrative endpoints require `Authorization: Bearer
 <GUARDRYLE_ADMIN_TOKEN>` and return sanitized errors.
 
-The React dashboard lives in `front-end/` and provides a control-room view for blocked requests, review queues, policy health, evaluation accuracy, and request-volume trends. The current dashboard uses representative local data while the backend/API contract is being connected.
-
-Regenerate the frontend snapshot after changing the policy, representative dataset, or comparison report:
-
-```bash
-python scripts/export_dashboard_data.py
-```
-
-The exporter reads `policy.json`, `data/representative_dataset.json`, and `reports/rules_vs_semantic_comparison.json`; the dashboard does not duplicate those values in its React source.
+The React dashboard lives in `front-end/` and provides a live control-room
+view for blocked requests, review queues, active policy health, provider
+status, latency, and request-volume trends. It reads sanitized runtime audit
+events from the backend operational store, so the operations view is not based
+on representative data.
 
 Start the Vite development server:
 
@@ -127,9 +123,9 @@ During Vite development, `/api` requests are proxied to
 
 The dashboard includes:
 
-- Blocked, review, allowed, and policy-accuracy metric cards
-- Request-volume charts and category-level evaluation results
-- Filterable event log with a review modal for each event
+- Blocked, review, allowed, degraded, and reviewed runtime metric cards
+- Live decision-distribution charts and average latency
+- Recent sanitized runtime event log with persistent review state
 - JSON/YAML policy upload controls with validation-ready feedback
 - Policy health and version coverage panel
 - Responsive desktop, tablet, and narrow-screen layouts
@@ -151,8 +147,10 @@ is deployed with an API server:
 - `GET /api/providers/openai/status`, `PUT /api/providers/openai/key`, and
   `POST /api/providers/openai/test` support masked OpenAI configuration and
   backend-confirmed connection testing.
-- `GET /api/dashboard` returns the dashboard contract with persisted runtime
-  events merged into the existing evaluation view.
+- `GET /api/dashboard` returns live runtime counts, active policy information,
+  latency, and sanitized audit events from the operational store.
+- `POST /api/dashboard/events/{request_id}/review` persists review state for a
+  runtime event and requires the admin bearer token.
 - `POST /api/evaluate` evaluates a request through `SecurityPipeline`, persists
   a sanitized audit event in SQLite, and returns only the decision, safe reason
   codes/hits, request ID, provider, degraded state, and latency. It requires
