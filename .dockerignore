@@ -1,0 +1,12 @@
+.git
+.gitignore
+.pytest_cache
+__pycache__
+*.py[cod]
+data/*.sqlite3
+front-end
+reports
+tests
+*.md
+!README.md
+!pyproject.toml

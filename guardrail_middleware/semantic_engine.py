@@ -3,10 +3,12 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
+from typing import Any
 
 from .engine import GuardrailEngine
 from .models import Decision, GuardrailResult, Policy
 from .normalizer import RequestNormalizer
+from .providers import EmbeddingProvider, ProviderError
 
 _TOKEN_PATTERN = re.compile(r"[a-zA-Z0-9]+")
 _STOPWORDS = {
@@ -52,7 +54,10 @@ _STOPWORDS = {
 
 
 class SemanticEngine(GuardrailEngine):
-    """In-memory semantic policy evaluator using deterministic bag-of-words similarity."""
+    """Semantic policy evaluator using a configured embedding provider when supplied."""
+
+    def __init__(self, embedding_provider: EmbeddingProvider | None = None):
+        self.embedding_provider = embedding_provider
 
     def evaluate(self, text: str, policy: Policy) -> GuardrailResult:
         normalized_text = RequestNormalizer.normalize(text)
@@ -72,6 +77,9 @@ class SemanticEngine(GuardrailEngine):
                 rule_hits=[],
                 metadata={"source": "semantic-engine", "semantic_matches": []},
             )
+
+        if self.embedding_provider is not None:
+            return self._evaluate_embeddings(normalized_text, policy)
 
         query_vector = self._vectorize(normalized_text)
         matches = []
@@ -131,6 +139,71 @@ class SemanticEngine(GuardrailEngine):
             },
         )
 
+    def _evaluate_embeddings(self, text: str, policy: Policy) -> GuardrailResult:
+        try:
+            query_vector = self.embedding_provider.embed(text)
+            matches: list[dict[str, Any]] = []
+            min_threshold = min(policy.semantic_review_threshold, policy.semantic_deny_threshold)
+            for example in policy.semantic_examples:
+                example_vector = self.embedding_provider.embed(example.text)
+                score = self._cosine_similarity_vectors(query_vector, example_vector)
+                if score >= min_threshold:
+                    matches.append({
+                        "example_id": example.id,
+                        "decision": example.decision,
+                        "score": round(score, 4),
+                        "text": example.text,
+                    })
+        except (ProviderError, RuntimeError, TimeoutError, ValueError) as exc:
+            raise RuntimeError("Embedding provider evaluation failed.") from exc
+
+        return self._decision_from_matches(matches, policy, source="embedding-provider")
+
+    def _decision_from_matches(
+        self,
+        matches: list[dict[str, Any]],
+        policy: Policy,
+        *,
+        source: str,
+    ) -> GuardrailResult:
+        matches.sort(key=lambda item: item["score"], reverse=True)
+        top_matches = matches[: max(1, policy.semantic_top_k)]
+        decision = policy.default_decision
+        rule_hits: list[str] = []
+        reasons: list[str] = []
+        for match in top_matches:
+            score = match["score"]
+            if match["decision"] == Decision.DENY and score >= policy.semantic_deny_threshold:
+                decision = Decision.DENY
+                rule_hits.append(match["example_id"])
+                reasons.append(
+                    f"Semantic policy example '{match['example_id']}' matches with similarity {score} and denies the input."
+                )
+            elif match["decision"] == Decision.REVIEW and score >= policy.semantic_review_threshold:
+                if decision != Decision.DENY:
+                    decision = Decision.REVIEW
+                rule_hits.append(match["example_id"])
+                reasons.append(
+                    f"Semantic policy example '{match['example_id']}' matches with similarity {score} and requires review."
+                )
+        if not reasons:
+            reasons = ["No semantic policy examples crossed the configured similarity thresholds."]
+        return GuardrailResult(
+            decision=decision,
+            reasons=reasons,
+            rule_hits=rule_hits,
+            metadata={
+                "source": source,
+                "semantic_matches": top_matches,
+                "thresholds": {
+                    "deny": policy.semantic_deny_threshold,
+                    "review": policy.semantic_review_threshold,
+                },
+                "provider": self.embedding_provider.metadata.provider,
+                "model_id": self.embedding_provider.metadata.model_id,
+            },
+        )
+
     def _vectorize(self, text: str) -> Counter[str]:
         tokens = _TOKEN_PATTERN.findall(RequestNormalizer.normalize(text).lower())
         filtered_tokens = [token for token in tokens if token not in _STOPWORDS]
@@ -147,6 +220,17 @@ class SemanticEngine(GuardrailEngine):
         numerator = sum(left[token] * right[token] for token in overlap)
         left_norm = math.sqrt(sum(value * value for value in left.values()))
         right_norm = math.sqrt(sum(value * value for value in right.values()))
+        if left_norm == 0 or right_norm == 0:
+            return 0.0
+        return numerator / (left_norm * right_norm)
+
+    @staticmethod
+    def _cosine_similarity_vectors(left: list[float], right: list[float]) -> float:
+        if not left or not right or len(left) != len(right):
+            raise ValueError("Embedding vectors must have matching non-empty dimensions.")
+        numerator = sum(left[index] * right[index] for index in range(len(left)))
+        left_norm = math.sqrt(sum(value * value for value in left))
+        right_norm = math.sqrt(sum(value * value for value in right))
         if left_norm == 0 or right_norm == 0:
             return 0.0
         return numerator / (left_norm * right_norm)

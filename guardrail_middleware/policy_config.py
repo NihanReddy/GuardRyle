@@ -38,13 +38,23 @@ class PolicyConfigLoader:
             semantic_deny_threshold=float(data.get("semantic_deny_threshold", 0.75)),
             semantic_review_threshold=float(data.get("semantic_review_threshold", 0.55)),
             semantic_top_k=int(data.get("semantic_top_k", 3)),
+            fuzzy_threshold=(
+                float(data["fuzzy_threshold"]) if data.get("fuzzy_threshold") is not None else None
+            ),
         )
 
     @staticmethod
     def load_file(path: str | Path) -> list[Policy]:
         policy_path = Path(path)
-        with policy_path.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
+        text = policy_path.read_text(encoding="utf-8")
+        if policy_path.suffix.lower() in {".yaml", ".yml"}:
+            try:
+                import yaml
+            except ImportError as error:
+                raise ImportError("YAML policy loading requires the PyYAML package.") from error
+            payload = yaml.safe_load(text)
+        else:
+            payload = json.loads(text)
 
         if isinstance(payload, list):
             return [PolicyConfigLoader.from_dict(item) for item in payload]
@@ -76,9 +86,14 @@ class PolicyConfigLoader:
         return SemanticExample(
             id=str(data.get("id") or "semantic-example"),
             text=str(data.get("text", "")),
-            decision=PolicyConfigLoader._parse_decision(data.get("decision", "deny")),
+            decision=PolicyConfigLoader._parse_decision(
+                data.get("decision", data.get("action", "deny"))
+            ),
             description=str(data.get("description", "")),
-            metadata=dict(data.get("metadata", {})),
+            metadata={
+                **dict(data.get("metadata", {})),
+                **({"category": data["category"]} if "category" in data else {}),
+            },
         )
 
     @staticmethod

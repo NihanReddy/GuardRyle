@@ -17,6 +17,16 @@ class GuardrailResult:
     rule_hits: list[str] = field(default_factory=list)
     metadata: dict[str, object] = field(default_factory=dict)
 
+    @property
+    def authorized(self) -> bool:
+        return (
+            self.decision == Decision.ALLOW
+            and not bool(self.metadata.get("required_check_failed", False))
+        )
+
+    def __bool__(self) -> bool:
+        return self.authorized
+
 
 @dataclass(slots=True)
 class PolicyRule:
@@ -52,3 +62,4 @@ class Policy:
     semantic_deny_threshold: float = 0.75
     semantic_review_threshold: float = 0.55
     semantic_top_k: int = 3
+    fuzzy_threshold: float | None = None

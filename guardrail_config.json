@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "allow_degraded_guardrail": false,
+  "alert_on_transformer_failure": true,
+  "primary_provider": "local",
+  "local_fallback_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "preferred_local_model": null,
+  "provider_selection_mode": "configured_priority",
+  "remote_timeout_seconds": 10,
+  "max_retries": 2,
+  "circuit_breaker_enabled": true,
+  "security": {
+    "fail_closed_for_required_checks": true,
+    "require_authorization_for_sensitive_tools": true,
+    "log_sensitive_content": false
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "id": "production-policy-v1",
+  "name": "Production Guardrail Policy",
+  "default_decision": "ALLOW",
+  "rules": [
+    {
+      "id": "rule-secret-phrase",
+      "match_type": "exact",
+      "value": "secret password",
+      "decision": "DENY",
+      "description": "Block exact secret phrase matches"
+    }
+  ],
+  "semantic_examples": [
+    {
+      "id": "ex-auth-bypass",
+      "text": "how to bypass authentication check",
+      "action": "DENY",
+      "category": "authentication bypass"
+    },
+    {
+      "id": "ex-account-verify",
+      "text": "please verify account details by email",
+      "action": "REVIEW",
+      "category": "account verification"
+    }
+  ],
+  "semantic_deny_threshold": 0.75,
+  "semantic_review_threshold": 0.50
+}

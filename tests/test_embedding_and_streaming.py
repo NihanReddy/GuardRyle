@@ -59,3 +59,26 @@ def test_streaming_guardrail_middleware_detects_unsafe_chunk():
 
     assert result.decision == Decision.DENY
     assert result.metadata["stream_detected"] is True
+    assert "buffer_text" not in result.metadata
+
+
+def test_streaming_guardrail_middleware_has_isolated_bounded_state():
+    policy = Policy(id="p", name="p", default_decision=Decision.ALLOW)
+    middleware = StreamingGuardrailMiddleware(policy=policy, max_chunks=2, max_chars=8)
+
+    first = middleware.evaluate_stream(["123456789"])
+    second = middleware.evaluate_stream(["ok"])
+
+    assert first.metadata["buffer_chars"] == 8
+    assert second.metadata["buffer_chars"] == 2
+
+
+def test_streaming_guardrail_middleware_fails_closed_for_bad_chunk():
+    policy = Policy(id="p", name="p", default_decision=Decision.ALLOW)
+    middleware = StreamingGuardrailMiddleware(policy=policy)
+
+    result = middleware.evaluate_stream(["safe", 12])  # type: ignore[list-item]
+
+    assert result.decision == Decision.DENY
+    assert result.metadata["stream_failed"] is True
+    assert result.authorized is False
